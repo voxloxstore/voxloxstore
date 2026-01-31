@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""
+سكربتات خلفية لمعالجة طلبات موقع الاختراق
+ملاحظة: هذا للعرض التوضيحي فقط
+"""
+
+from flask import Flask, request, jsonify
+import sqlite3
+import hashlib
+import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import threading
+import datetime
+import logging
+
+app = Flask(__name__)
+
+# إعداد قاعدة البيانات
+def init_db():
+    conn = sqlite3.connect('service_requests.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS requests
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  timestamp TEXT,
+                  service_type TEXT,
+                  target_info TEXT,
+                  requirements TEXT,
+                  contact_method TEXT,
+                  contact_details TEXT,
+                  ip_address TEXT,
+                  user_agent TEXT,
+                  status TEXT DEFAULT 'pending')''')
+    conn.commit()
+    conn.close()
+
+# معالجة الطلبات
+@app.route('/submit_request', methods=['POST'])
+def submit_request():
+    try:
+        data = request.json
+        
+        # تسجيل الطلب
+        conn = sqlite3.connect('service_requests.db')
+        c = conn.cursor()
+        
+        c.execute('''INSERT INTO requests 
+                     (timestamp, service_type, target_info, requirements, 
+                      contact_method, contact_details, ip_address, user_agent)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (datetime.datetime.now().isoformat(),
+                   data.get('serviceType'),
+                   data.get('targetInfo'),
+                   data.get('requirements'),
+                   data.get('contactMethod'),
+                   data.get('contactDetails'),
+                   request.remote_addr,
+                   request.user_agent.string))
+        
+        conn.commit()
+        request_id = c.lastrowid
+        conn.close()
+        
+        # إرسال إشعار (في الواقع يكون مشفرًا)
+        send_notification(request_id, data)
+        
+        return jsonify({
+            'success': True,
+            'message': 'تم استلام طلبك',
+            'request_id': f'REQ-{hashlib.sha256(str(request_id).encode()).hexdigest()[:12]}',
+            'encryption_key': 'AES-256-GCM:ACTIVE'
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+def send_notification(request_id, data):
+    """إرسال إشعار بالطلب الجديد"""
+    # في الواقع يتم الإرسال عبر قنوات مشفرة
+    print(f"[!] طلب جديد #{request_id}")
+    print(f"    الخدمة: {data.get('serviceType')}")
+    print(f"    طريقة التواصل: {data.get('contactMethod')}")
+    print(f"    الوقت: {datetime.datetime.now()}")
+    print("="*50)
+
+if __name__ == '__main__':
+    init_db()
+    print("✅ السيرفر جاهز على المنفذ 8080 (HTTPS مطلوب في الإنتاج)")
+    app.run(port=8080, debug=True)
